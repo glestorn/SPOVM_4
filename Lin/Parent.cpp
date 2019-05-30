@@ -48,9 +48,17 @@ int main(int argc, char* argv[])
 
 	runController();
 
+
 	char outputRow[MESS_SIZE];
 	
-	int value = 0;
+	int value;
+	int buff;
+
+	sem_getvalue(finishProgram, &buff);
+	if (buff > 0) {
+		sem_wait(finishProgram);
+	}
+
 
 	while (true) {
 		sem_wait(print);
@@ -66,6 +74,7 @@ int main(int argc, char* argv[])
 		sem_getvalue(finishProgram, &value);
 		if (value > 0) {
 			close(pipeRd);
+			close(pipeWr);
 			break;
 		}
 	}

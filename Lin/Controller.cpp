@@ -36,13 +36,15 @@ static void *thread_func(void *arg)
 	char outputRow[MESS_SIZE];
 	sprintf(outputRow, "Process%d", threadID-1);
 	while (true) {
-		pthread_mutex_lock(&mutex);
-		while (!canWrite) {
-			pthread_cond_wait(&objOfSynchr, &mutex);
+
+		if (!pthread_mutex_trylock(&mutex)) {
+			while (!canWrite) {
+				pthread_cond_wait(&objOfSynchr, &mutex);
+			}
+			write(pipeWr, outputRow, MESS_SIZE);
+			canWrite = 0;
+			pthread_mutex_unlock(&mutex);
 		}
-		write(pipeWr, outputRow, MESS_SIZE);
-		canWrite = 0;
-		pthread_mutex_unlock(&mutex);
 
 		if (threadInfo.back() == pthread_self()) {
 			if (!pthread_mutex_trylock(&closeMutexs.back())) {
@@ -96,25 +98,30 @@ int main(int argc, char* argv[])
 	int switchCallback;
 
 	while(true) {
+		
 		if (!threadInfo.empty() && !canWrite) {
-			pthread_mutex_lock(&mutex);
-			sem_post(print);
-			sem_wait(write);
-
-			canWrite = 1;
-			pthread_cond_signal(&objOfSynchr);
-			pthread_mutex_unlock(&mutex);
+			if (!pthread_mutex_trylock(&mutex)) {
+				sem_post(print);
+				sem_wait(write);
+				
+				canWrite = 1;
+				pthread_cond_signal(&objOfSynchr);
+				pthread_mutex_unlock(&mutex);
+			}
 		}
 
 		if (closeState && threadInfo.empty()) {
-				close(pipeWr);
-				sem_post(finishProgram);
-				sem_post(print);
-				return 0;
-			}
+			close(pipeWr);
+			pthread_mutex_destroy(&mutex);
+			pthread_cond_destroy(&objOfSynchr);
+			sem_post(finishProgram);
+			sem_post(print);
+			return 0;
+		}
 
 		if (kbhit()) {
 			choice = getch();
+			
 			if (choice != -1) {
 				switchCallback = switchMenu((char)choice);
 				usleep(1000);
